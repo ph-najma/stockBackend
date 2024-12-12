@@ -1,0 +1,23 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const auth_1 = require("../middleware/auth");
+const adminController_1 = require("../controllers/adminController");
+const adminService_1 = require("../services/adminService");
+const adminController = new adminController_1.AdminController(new adminService_1.AdminService());
+const router = express_1.default.Router();
+router.post("/adminLogin", adminController.login);
+router.get("/userList", auth_1.verifyAdminToken, adminController.getUserList);
+router.post("/disableUser/:id", auth_1.verifyAdminToken, adminController.disableUser);
+router.get("/stocks", adminController.getStockList);
+router.get("/stocklist", adminController.getStockList);
+router.put("/softDeleteStock/:id", adminController.softDeleteStock);
+router.get("/orders", adminController.getAllOrders);
+router.get("/limitorders", adminController.getLimitOrders);
+router.get("/marketorders", adminController.getMarketOrders);
+router.get("/matchedorders", adminController.getMatchedOrders);
+router.get("/orderDetails/:orderId", adminController.getOrderDetails);
+exports.default = router;
