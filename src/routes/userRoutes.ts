@@ -1,15 +1,37 @@
 import express, { Router, Request, Response, NextFunction } from "express";
 import passport, { use } from "passport";
 import { OAuth2Client } from "google-auth-library";
-import { verifyUserToken } from "../middleware/auth";
+import { verifyTokenWithRole } from "../middleware/auth";
 import dotenv from "dotenv";
 import { UserController } from "../controllers/userController";
 import User, { IUser } from "../models/userModel";
 import jwt from "jsonwebtoken";
-import getPortfolio from "../controllers/portfoliocontroller";
 import { checkPortfolio } from "../controllers/checkPortfolio";
-
-const userController = new UserController();
+import { UserService } from "../services/userService";
+import { StockRepository } from "../repositories/stockrepository";
+import { UserRepository } from "../repositories/userRepository";
+import { transactionRepository } from "../repositories/transactionRepository";
+import { OrderRepository } from "../repositories/orderRepository";
+import { PromotionRepository } from "../repositories/promotionRepository";
+import { watchlistRepostory } from "../repositories/watchlistRepsoitory";
+import { PaymentController } from "../controllers/paymentController";
+const userRepository = new UserRepository();
+const stockRepository = new StockRepository();
+const TransactionRepository = new transactionRepository();
+const orderRepository = new OrderRepository();
+const promotionRepository = new PromotionRepository();
+const watchlistRepository = new watchlistRepostory();
+const paymentController = new PaymentController();
+const userController = new UserController(
+  new UserService(
+    stockRepository,
+    userRepository,
+    TransactionRepository,
+    orderRepository,
+    promotionRepository,
+    watchlistRepository
+  )
+);
 
 dotenv.config();
 
@@ -30,11 +52,58 @@ router.post("/verifyOtp", userController.verifyOtp);
 router.post("/login", userController.login);
 router.post("/forgotPassword", userController.forgotPassword);
 router.post("/resetPassword", userController.resetPassword);
-router.get("/home", verifyUserToken, userController.home);
-router.get("/UserProfile", verifyUserToken, userController.getUserProfile);
-router.post("/orders", userController.plcaeOrder);
-router.get("/portfolio", verifyUserToken, getPortfolio);
+router.get("/home", verifyTokenWithRole("user"), userController.home);
+router.get("/stocks", verifyTokenWithRole("user"), userController.getStockList);
+router.get(
+  "/UserProfile",
+  verifyTokenWithRole("user"),
+  userController.getUserProfile
+);
+router.post("/orders", verifyTokenWithRole("user"), userController.plcaeOrder);
+router.get(
+  "/portfolio",
+  verifyTokenWithRole("user"),
+  userController.getUserportfolio
+);
 router.post("/checkPortfolio", checkPortfolio);
+router.get(
+  "/transactions",
+  verifyTokenWithRole("user"),
+  userController.getTransaction
+);
+router.post("/updatePortfolio", userController.updatePortfolioAfterSell);
+router.get(
+  "/getWatchlist",
+  verifyTokenWithRole("user"),
+  userController.getWatchlist
+);
+router.post(
+  "/ensureAndAddStock",
+  verifyTokenWithRole("user"),
+  userController.ensureWatchlistAndAddStock
+);
+
+router.get(
+  "/getStockData",
+  verifyTokenWithRole("user"),
+  userController.getStockData
+);
+
+router.get("/getOrders", verifyTokenWithRole("user"), userController.getOrders);
+
+router.post("/create-order", verifyTokenWithRole("user"), (req, res) =>
+  paymentController.createOrder(req, res)
+);
+router.post("/verify-payment", verifyTokenWithRole("user"), (req, res) =>
+  paymentController.verifyPayment(req, res)
+);
+
+router.get(
+  "/promotions",
+  verifyTokenWithRole("user"),
+  userController.getPromotions
+);
+
 // Google OAuth routes
 router.get(
   "/auth/google",

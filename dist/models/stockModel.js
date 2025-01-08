@@ -36,6 +36,7 @@ const stockSchema = new mongoose_1.Schema({
     change: { type: Number, required: true },
     changePercent: { type: String, required: true },
     latestTradingDay: { type: String, required: true },
+    adjustedVolume: { type: Number, required: true },
 });
 const Stock = mongoose_1.default.model("Stock", stockSchema);
 exports.default = Stock;

@@ -4,8 +4,8 @@ import { IUser } from "./userModel";
 import { IStock } from "./stockModel";
 
 export interface IOrder extends Document {
-  user: IUser["_id"];
-  stock: IStock["_id"];
+  user: mongoose.Types.ObjectId;
+  stock: IStock["_id"] | string | mongoose.Types.ObjectId;
   type: "BUY" | "SELL";
   orderType: "MARKET" | "LIMIT" | "STOP";
   quantity: number;
@@ -14,6 +14,8 @@ export interface IOrder extends Document {
   status: "PENDING" | "COMPLETED" | "FAILED";
   createdAt: Date;
   completedAt?: Date;
+  isIntraday: Boolean;
+  orderId?: string;
 }
 
 const orderSchema = new Schema<IOrder>({
@@ -35,6 +37,16 @@ const orderSchema = new Schema<IOrder>({
   },
   createdAt: { type: Date, default: Date.now },
   completedAt: { type: Date },
+  isIntraday: { type: Boolean, required: true, default: false },
+  orderId: { type: String, unique: true },
+});
+
+orderSchema.pre<IOrder>("save", function (next) {
+  if (!this.orderId) {
+    // Generate a unique orderId with a prefix and timestamp
+    this.orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  }
+  next();
 });
 
 export default mongoose.model<IOrder>("Order", orderSchema);

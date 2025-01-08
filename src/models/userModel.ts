@@ -1,20 +1,28 @@
 import mongoose, { Schema, Document } from "mongoose";
 import bcrypt from "bcryptjs";
 import { IStock } from "./stockModel";
+import { IPromotion } from "./promoModel";
 
 // Define an interface for the User document
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   name: string | undefined;
   email: string | undefined;
-  password?: string | undefined; // Optional because it's not always required
+  password?: string | undefined;
   createdAt: Date;
   is_Blocked: boolean;
+  role: "user" | "admin";
   is_Admin: boolean;
   googleId?: string;
   profilePhoto?: string;
   portfolio: { stockId: IStock["_id"]; quantity: number }[];
   comparePassword(password: string): Promise<boolean>;
+  balance: number;
+  referralCode?: string;
+  referredBy?: string;
+  referralsCount: number;
+  promotions: mongoose.Types.ObjectId[];
+  checkLoyaltyRewards(): Promise<void>;
 }
 
 // Define the schema
@@ -31,7 +39,7 @@ const userSchema = new Schema<IUser>({
   password: {
     type: String,
     required: function (this: IUser) {
-      return !this.googleId; // Only require password if no Google ID is provided
+      return !this.googleId;
     },
   },
   createdAt: {
@@ -43,18 +51,23 @@ const userSchema = new Schema<IUser>({
     required: true,
     default: false,
   },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
+  },
   is_Admin: {
     type: Boolean,
     default: false,
   },
   googleId: {
-    type: String, // Field for Google user ID
+    type: String,
     unique: true,
-    sparse: true, // Allows missing values to be unique
+    sparse: true,
   },
   profilePhoto: {
-    type: String, // Store the URL or path to the image
-    default: "assets/default-profile.png", // Default profile image
+    type: String,
+    default: "assets/default-profile.png",
   },
   portfolio: [
     {
@@ -62,6 +75,20 @@ const userSchema = new Schema<IUser>({
       quantity: { type: Number, required: true },
     },
   ],
+  balance: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  promotions: [
+    {
+      type: Schema.Types.ObjectId,
+      ref: "Promotion", // Reference the Promotion model
+    },
+  ],
+  referralCode: { type: String, unique: true },
+  referredBy: { type: String },
+  referralsCount: { type: Number, default: 0 },
 });
 
 // Pre-save hook to hash the password
@@ -80,6 +107,24 @@ userSchema.methods.comparePassword = async function (
   password: string
 ): Promise<boolean> {
   return await bcrypt.compare(password, this.password as string);
+};
+// Method to check for loyalty rewards based on promotions
+userSchema.methods.checkLoyaltyRewards = async function (): Promise<void> {
+  const user = this;
+
+  for (const promotionId of user.promotions) {
+    const promotion = await mongoose
+      .model<IPromotion>("Promotion")
+      .findById(promotionId);
+
+    if (promotion && promotion.loyaltyRewards.enabled) {
+      if (user.balance >= promotion.loyaltyRewards.tradingAmount) {
+        user.balance += promotion.loyaltyRewards.rewardAmount;
+        console.log("Loyalty rewards applied:", user.balance);
+      }
+    }
+  }
+  await user.save();
 };
 
 // Create and export the model

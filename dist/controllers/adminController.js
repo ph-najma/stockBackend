@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
 const orderModel_1 = __importDefault(require("../models/orderModel"));
 const transactionModel_1 = __importDefault(require("../models/transactionModel"));
+const mongoose_1 = __importDefault(require("mongoose"));
 class AdminController {
     constructor(adminService) {
         this.adminService = adminService;
@@ -28,6 +29,13 @@ class AdminController {
         this.getMarketOrders = this.getMarketOrders.bind(this);
         this.getMatchedOrders = this.getMatchedOrders.bind(this);
         this.getOrderDetails = this.getOrderDetails.bind(this);
+        this.getAllTransactions = this.getAllTransactions.bind(this);
+        this.getUserPortfolio = this.getUserPortfolio.bind(this);
+        this.getTotalFeesCollected = this.getTotalFeesCollected.bind(this);
+        this.cancelOrder = this.cancelOrder.bind(this);
+        this.updateLimit = this.updateLimit.bind(this);
+        this.getLimits = this.getLimits.bind(this);
+        this.CreatePromotions = this.CreatePromotions.bind(this);
     }
     // Admin Login
     login(req, res) {
@@ -116,14 +124,20 @@ class AdminController {
             try {
                 const { status, user, dateRange } = req.query;
                 const query = { orderType: "LIMIT" };
-                if (status && status !== "all")
+                if (typeof status === "string" && status !== "all") {
                     query.status = status;
-                if (user)
-                    query.user = { $regex: new RegExp(String(user), "i") };
+                }
+                if (user) {
+                    const userQuery = Array.isArray(user) ? user.join(" ") : user;
+                    if (typeof userQuery === "string") {
+                        query.user = { $regex: new RegExp(userQuery, "i") };
+                    }
+                }
                 if (dateRange) {
+                    const date = new Date(dateRange);
                     query.createdAt = {
-                        $gte: new Date(dateRange),
-                        $lte: new Date(new Date(dateRange).setHours(23, 59, 59, 999)),
+                        $gte: new Date(date.setHours(0, 0, 0, 0)),
+                        $lte: new Date(date.setHours(23, 59, 59, 999)),
                     };
                 }
                 const orders = yield this.adminService.getLimitOrders(query);
@@ -141,21 +155,27 @@ class AdminController {
             try {
                 const { status, user, dateRange } = req.query;
                 const query = { orderType: "MARKET" };
-                if (status && status !== "all")
+                if (typeof status === "string" && status !== "all") {
                     query.status = status;
-                if (user)
-                    query.user = { $regex: new RegExp(String(user), "i") };
+                }
+                if (user) {
+                    const userQuery = Array.isArray(user) ? user.join(" ") : user;
+                    if (typeof userQuery === "string") {
+                        query.user = { $regex: new RegExp(userQuery, "i") };
+                    }
+                }
                 if (dateRange) {
+                    const date = new Date(dateRange);
                     query.createdAt = {
-                        $gte: new Date(dateRange),
-                        $lte: new Date(new Date(dateRange).setHours(23, 59, 59, 999)),
+                        $gte: new Date(date.setHours(0, 0, 0, 0)),
+                        $lte: new Date(date.setHours(23, 59, 59, 999)),
                     };
                 }
                 const orders = yield this.adminService.getMarketOrders(query);
                 res.status(200).json(orders);
             }
             catch (error) {
-                console.error("Error fetching market orders:", error);
+                console.error("Error fetching limit orders:", error);
                 res.status(500).json({ message: "Server error", error });
             }
         });
@@ -198,6 +218,103 @@ class AdminController {
             }
             catch (error) {
                 res.status(500).json({ message: "Error fetching order details", error });
+            }
+        });
+    }
+    getAllTransactions(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const transactions = yield this.adminService.getAllTransactions();
+            res.json(transactions);
+        });
+    }
+    getUserPortfolio(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const userId = req.params.userId;
+                console.log("hello from controller");
+                if (!mongoose_1.default.Types.ObjectId.isValid(userId)) {
+                    res.status(400).json({ message: "Invalid User ID format" });
+                    console.log("not correct");
+                }
+                const portfolio = yield this.adminService.getUserPortfolio(userId);
+                res.status(200).json(portfolio);
+            }
+            catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
+    }
+    getTotalFeesCollected(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const fees = yield this.adminService.getTotalFeesCollected();
+                res.status(200).json(fees);
+            }
+            catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
+    }
+    cancelOrder(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const orderId = req.params.orderId;
+                console.log(orderId, "from controller");
+                const updatedOrder = yield this.adminService.cancelOrder(orderId);
+                res.status(200).json({
+                    message: "Order status updated to FAILED successfully",
+                    order: updatedOrder,
+                });
+            }
+            catch (error) {
+                console.error("Error cancelling order:", error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+    }
+    updateLimit(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const limitData = req.body;
+                console.log(req.body);
+                const updatedLimit = yield this.adminService.updateLimit(limitData);
+                res.status(200).json(updatedLimit);
+            }
+            catch (error) {
+                console.error("Error cancelling order:", error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+    }
+    getLimits(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const limits = yield this.adminService.getLimits();
+                res.status(200).json(limits);
+            }
+            catch (error) {
+                console.error("Error cancelling order:", error);
+                res.status(500).json({ message: error.message });
+            }
+        });
+    }
+    CreatePromotions(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const promotions = yield this.adminService.CreatePromotions(req.body);
+                res.status(201).json({
+                    success: true,
+                    message: "Promotion created successfully",
+                    promotions,
+                });
+            }
+            catch (error) {
+                console.error("Error creating promotion:", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to create promotion",
+                    error: error.message,
+                });
             }
         });
     }

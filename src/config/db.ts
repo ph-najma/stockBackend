@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
+
 dotenv.config();
 
 const connectDB = async (): Promise<void> => {
@@ -18,5 +19,7 @@ const connectDB = async (): Promise<void> => {
     process.exit(1);
   }
 };
+
+
 
 export default connectDB;

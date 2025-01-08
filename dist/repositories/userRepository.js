@@ -14,7 +14,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserRepository = void 0;
 const userModel_1 = __importDefault(require("../models/userModel"));
+const mongoose_1 = __importDefault(require("mongoose"));
 class UserRepository {
+    constructor() {
+        this.model = userModel_1.default;
+    }
     // Find user by email
     findByEmail(email) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -30,7 +34,10 @@ class UserRepository {
     //Find by ID
     findById(userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            return yield userModel_1.default.findById(userId);
+            return yield userModel_1.default.findById(userId).populate({
+                path: "portfolio.stockId", // This is the path to the referenced model
+                model: "Stock", // Ensure you specify the model name for Stock
+            });
         });
     }
     // Save a new user
@@ -83,6 +90,85 @@ class UserRepository {
     saveUser(user) {
         return __awaiter(this, void 0, void 0, function* () {
             return user.save();
+        });
+    }
+    // Fetch user by ID
+    getUserById(id) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield this.model
+                .findById(id)
+                .populate({
+                path: "portfolio.stockId", // This is the path to the referenced model
+                model: "Stock", // Ensure you specify the model name for Stock
+            })
+                .exec();
+            console.log(user, "from repo");
+            return user;
+        });
+    }
+    updatePortfolio(userId, portfolioData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.model.findByIdAndUpdate(userId, { $push: { portfolio: portfolioData } }, { new: true });
+        });
+    }
+    // Fetch user balance
+    getUserBalance(userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield this.model.findById(userId);
+            return (user === null || user === void 0 ? void 0 : user.balance) || null;
+        });
+    }
+    // Update user balance
+    updateUserBalance(userId, amount) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.model.findByIdAndUpdate(userId, { $inc: { balance: amount } }, { new: true });
+        });
+    }
+    addSignupBonus(userId, promotionId, bonusAmount) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield userModel_1.default.findById(userId);
+            if (!user) {
+                throw new Error("User not found");
+            }
+            user.balance += bonusAmount;
+            user.promotions.push(new mongoose_1.default.Types.ObjectId(promotionId));
+            yield user.save();
+            return user;
+        });
+    }
+    updatePortfolioAfterSell(userId, stockId, quantityToSell) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield this.model.findById(userId);
+            if (!user)
+                throw new Error("User not found");
+            // Check if the stock exists in the portfolio
+            const stockIdObject = new mongoose_1.default.Types.ObjectId(stockId);
+            const stockIndex = user.portfolio.findIndex((item) => item.stockId.toString() === stockIdObject.toString());
+            if (stockIndex === -1) {
+                throw new Error("Stock not found in portfolio");
+            }
+            const stockInPortfolio = user.portfolio[stockIndex];
+            if (stockInPortfolio.quantity < quantityToSell) {
+                throw new Error("Not enough stock to sell");
+            }
+            if (stockInPortfolio.quantity === quantityToSell) {
+                user.portfolio.splice(stockIndex, 1);
+            }
+            else {
+                stockInPortfolio.quantity -= quantityToSell;
+            }
+            return yield user.save();
+        });
+    }
+    findByRefferalCode(refferalcode) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield userModel_1.default.findOne({ referralCode: refferalcode });
+        });
+    }
+    getPromotions(userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield userModel_1.default.findById(userId).populate("promotions").exec();
+            return user;
         });
     }
 }

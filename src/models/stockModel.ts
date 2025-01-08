@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, ObjectId } from "mongoose";
-
+import { Types } from "mongoose";
 export interface IStock extends Document {
+  _id: Types.ObjectId;
   symbol: string;
   timestamp: Date;
   open: number;
@@ -12,6 +13,7 @@ export interface IStock extends Document {
   change: number;
   changePercent: string;
   latestTradingDay: string;
+  adjustedVolume: number;
 }
 
 const stockSchema: Schema = new Schema({
@@ -26,6 +28,7 @@ const stockSchema: Schema = new Schema({
   change: { type: Number, required: true },
   changePercent: { type: String, required: true },
   latestTradingDay: { type: String, required: true },
+  adjustedVolume: { type: Number, required: true },
 });
 
 const Stock = mongoose.model<IStock>("Stock", stockSchema);

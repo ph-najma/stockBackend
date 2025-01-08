@@ -44,5 +44,14 @@ const orderSchema = new mongoose_1.Schema({
     },
     createdAt: { type: Date, default: Date.now },
     completedAt: { type: Date },
+    isIntraday: { type: Boolean, required: true, default: false },
+    orderId: { type: String, unique: true },
+});
+orderSchema.pre("save", function (next) {
+    if (!this.orderId) {
+        // Generate a unique orderId with a prefix and timestamp
+        this.orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    }
+    next();
 });
 exports.default = mongoose_1.default.model("Order", orderSchema);

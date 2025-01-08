@@ -15,16 +15,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminService = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const userRepository_1 = require("../repositories/userRepository");
-const stockrepository_1 = require("../repositories/stockrepository");
-const orderRepository_1 = require("../repositories/orderRepository");
+const mongoose_1 = __importDefault(require("mongoose"));
 dotenv_1.default.config();
 const tokenBlacklist = new Set();
 class AdminService {
-    constructor() {
-        this.userRepository = new userRepository_1.UserRepository();
-        this.orderRepository = new orderRepository_1.OrderRepository();
-        this.stockRepository = new stockrepository_1.StockRepository();
+    constructor(userRepository, limitRepository, orderRepository, stockRepository, transactionRepository, promotionRepository) {
+        this.userRepository = userRepository;
+        this.orderRepository = orderRepository;
+        this.stockRepository = stockRepository;
+        this.transactionRepository = transactionRepository;
+        this.limitRepository = limitRepository;
+        this.promotionRepository = promotionRepository;
     }
     // Admin Login
     loginAdmin(email, password) {
@@ -64,31 +65,99 @@ class AdminService {
             };
         });
     }
+    //Get All Orders
     getAllOrders() {
         return __awaiter(this, void 0, void 0, function* () {
-            return this.orderRepository.findOrdersByType({});
+            return this.orderRepository.getAllOrders();
         });
     }
+    //Get Limit Orders
     getLimitOrders(query) {
         return __awaiter(this, void 0, void 0, function* () {
             query.orderType = "LIMIT";
             return this.orderRepository.findOrdersByType(query);
         });
     }
+    //Get Market Orders
     getMarketOrders(query) {
         return __awaiter(this, void 0, void 0, function* () {
             query.orderType = "MARKET";
             return this.orderRepository.findOrdersByType(query);
         });
     }
+    //Get Completed Orders
     getCompletedOrders() {
         return __awaiter(this, void 0, void 0, function* () {
             return this.orderRepository.findCompletedOrders();
         });
     }
+    //Get All Stocks
     getAllStocks() {
         return __awaiter(this, void 0, void 0, function* () {
             return this.stockRepository.getAllStocks();
+        });
+    }
+    //Get All Transactiosn
+    getAllTransactions() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.transactionRepository.getAllTransactions();
+        });
+    }
+    //Get UserPortfolio
+    getUserPortfolio(userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            console.log("hello from service");
+            const userObjectId = new mongoose_1.default.Types.ObjectId(userId);
+            const user = yield this.userRepository.findById(userObjectId);
+            if (!user) {
+                throw new Error("User not found");
+            }
+            const portfolio = user.portfolio;
+            const portfolioDetails = yield Promise.all(portfolio.map((item) => __awaiter(this, void 0, void 0, function* () {
+                const stockId = item.stockId; // Convert ObjectId to string
+                const stock = yield this.stockRepository.getStockById(stockId);
+                return {
+                    stock,
+                    quantity: item.quantity,
+                };
+            })));
+            return {
+                user: {
+                    name: user.name,
+                    email: user.email,
+                    balance: user.balance,
+                },
+                portfolio: portfolioDetails,
+            };
+        });
+    }
+    //Get Total Fees Collected
+    getTotalFeesCollected() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.transactionRepository.getFeeCollectionSummary();
+        });
+    }
+    // Cancel Order
+    cancelOrder(orderId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.orderRepository.cancelOrder(orderId);
+        });
+    }
+    //Update the Limits
+    updateLimit(limitData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.limitRepository.updateLimit(limitData);
+        });
+    }
+    //Get the Current Limits
+    getLimits() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.limitRepository.getLimits();
+        });
+    }
+    CreatePromotions(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.promotionRepository.createPromotion(data);
         });
     }
 }

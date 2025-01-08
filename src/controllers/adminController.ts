@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
-import { AdminService, IAdminService } from "../services/adminService";
+import { IAdminService } from "../services/adminService";
 import Order from "../models/orderModel";
 import transactionModel from "../models/transactionModel";
-
+import { ILimitOrderQuery } from "../interfaces/OrderInterface";
+import mongoose from "mongoose";
 export class AdminController {
   private adminService: IAdminService;
 
@@ -18,6 +19,13 @@ export class AdminController {
     this.getMarketOrders = this.getMarketOrders.bind(this);
     this.getMatchedOrders = this.getMatchedOrders.bind(this);
     this.getOrderDetails = this.getOrderDetails.bind(this);
+    this.getAllTransactions = this.getAllTransactions.bind(this);
+    this.getUserPortfolio = this.getUserPortfolio.bind(this);
+    this.getTotalFeesCollected = this.getTotalFeesCollected.bind(this);
+    this.cancelOrder = this.cancelOrder.bind(this);
+    this.updateLimit = this.updateLimit.bind(this);
+    this.getLimits = this.getLimits.bind(this);
+    this.CreatePromotions = this.CreatePromotions.bind(this);
   }
 
   // Admin Login
@@ -97,16 +105,24 @@ export class AdminController {
   public async getLimitOrders(req: Request, res: Response): Promise<void> {
     try {
       const { status, user, dateRange } = req.query;
-      const query: any = { orderType: "LIMIT" };
+      const query: ILimitOrderQuery = { orderType: "LIMIT" };
 
-      if (status && status !== "all") query.status = status;
-      if (user) query.user = { $regex: new RegExp(String(user), "i") };
+      if (typeof status === "string" && status !== "all") {
+        query.status = status;
+      }
+
+      if (user) {
+        const userQuery = Array.isArray(user) ? user.join(" ") : user;
+        if (typeof userQuery === "string") {
+          query.user = { $regex: new RegExp(userQuery, "i") };
+        }
+      }
+
       if (dateRange) {
+        const date = new Date(dateRange as string);
         query.createdAt = {
-          $gte: new Date(dateRange as string),
-          $lte: new Date(
-            new Date(dateRange as string).setHours(23, 59, 59, 999)
-          ),
+          $gte: new Date(date.setHours(0, 0, 0, 0)),
+          $lte: new Date(date.setHours(23, 59, 59, 999)),
         };
       }
 
@@ -122,23 +138,32 @@ export class AdminController {
   public async getMarketOrders(req: Request, res: Response): Promise<void> {
     try {
       const { status, user, dateRange } = req.query;
-      const query: any = { orderType: "MARKET" };
+      const query: ILimitOrderQuery = { orderType: "MARKET" };
 
-      if (status && status !== "all") query.status = status;
-      if (user) query.user = { $regex: new RegExp(String(user), "i") };
+      if (typeof status === "string" && status !== "all") {
+        query.status = status;
+      }
+
+      if (user) {
+        const userQuery = Array.isArray(user) ? user.join(" ") : user;
+
+        if (typeof userQuery === "string") {
+          query.user = { $regex: new RegExp(userQuery, "i") };
+        }
+      }
+
       if (dateRange) {
+        const date = new Date(dateRange as string);
         query.createdAt = {
-          $gte: new Date(dateRange as string),
-          $lte: new Date(
-            new Date(dateRange as string).setHours(23, 59, 59, 999)
-          ),
+          $gte: new Date(date.setHours(0, 0, 0, 0)),
+          $lte: new Date(date.setHours(23, 59, 59, 999)),
         };
       }
 
       const orders = await this.adminService.getMarketOrders(query);
       res.status(200).json(orders);
     } catch (error) {
-      console.error("Error fetching market orders:", error);
+      console.error("Error fetching limit orders:", error);
       res.status(500).json({ message: "Server error", error });
     }
   }
@@ -177,6 +202,87 @@ export class AdminController {
       }
     } catch (error) {
       res.status(500).json({ message: "Error fetching order details", error });
+    }
+  }
+  public async getAllTransactions(req: Request, res: Response): Promise<void> {
+    const transactions = await this.adminService.getAllTransactions();
+    res.json(transactions);
+  }
+
+  public async getUserPortfolio(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.params.userId;
+      console.log("hello from controller");
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        res.status(400).json({ message: "Invalid User ID format" });
+        console.log("not correct");
+      }
+      const portfolio = await this.adminService.getUserPortfolio(userId);
+      res.status(200).json(portfolio);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+  public async getTotalFeesCollected(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const fees = await this.adminService.getTotalFeesCollected();
+      res.status(200).json(fees);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+  public async cancelOrder(req: Request, res: Response): Promise<void> {
+    try {
+      const orderId = req.params.orderId;
+      console.log(orderId, "from controller");
+      const updatedOrder = await this.adminService.cancelOrder(orderId);
+      res.status(200).json({
+        message: "Order status updated to FAILED successfully",
+        order: updatedOrder,
+      });
+    } catch (error: any) {
+      console.error("Error cancelling order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+  public async updateLimit(req: Request, res: Response): Promise<void> {
+    try {
+      const limitData = req.body;
+      console.log(req.body);
+      const updatedLimit = await this.adminService.updateLimit(limitData);
+      res.status(200).json(updatedLimit);
+    } catch (error: any) {
+      console.error("Error cancelling order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+  public async getLimits(req: Request, res: Response): Promise<void> {
+    try {
+      const limits = await this.adminService.getLimits();
+      res.status(200).json(limits);
+    } catch (error: any) {
+      console.error("Error cancelling order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+  public async CreatePromotions(req: Request, res: Response): Promise<void> {
+    try {
+      const promotions = await this.adminService.CreatePromotions(req.body);
+      res.status(201).json({
+        success: true,
+        message: "Promotion created successfully",
+        promotions,
+      });
+    } catch (error: any) {
+      console.error("Error creating promotion:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to create promotion",
+        error: error.message,
+      });
     }
   }
 }

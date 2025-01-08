@@ -3,13 +3,14 @@ import mongoose, { Document, Schema } from "mongoose";
 import { IUser } from "./userModel";
 import { IOrder } from "./orderModel";
 import { IStock } from "./stockModel";
+import { Types } from "mongoose";
 
 export interface ITransaction extends Document {
   buyer: IUser["_id"];
   seller: IUser["_id"];
-  buyOrder: IOrder["_id"];
-  sellOrder: IOrder["_id"];
-  stock: IStock["_id"];
+  buyOrder: IOrder["_id"] | IOrder;
+  sellOrder: IOrder["_id"] | IOrder;
+  stock: IStock["_id"] | IStock;
   type: "BUY" | "SELL";
   quantity: number;
   price: number;
@@ -17,7 +18,7 @@ export interface ITransaction extends Document {
   fees: number;
   status: "PENDING" | "COMPLETED" | "FAILED";
   paymentMethod?: "PAYPAL" | "CREDIT_CARD" | "BANK_TRANSFER";
-  paymentReference?: string; // Payment gateway reference
+  paymentReference?: string; 
   createdAt: Date;
   completedAt?: Date;
 }

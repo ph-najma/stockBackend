@@ -1,13 +1,31 @@
-import { UserRepository } from "../repositories/userRepository";
+import { IuserRepsitory } from "../repositories/userRepository";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
-import nodemailer from "nodemailer";
 import { sendEmail } from "../utils/sendEmail";
 import { generateOTP } from "../utils/otpGenerator";
 import { IUser } from "../models/userModel";
 import { IOrder } from "../models/orderModel";
-import { OrderRepository } from "../repositories/orderRepository";
+import { ITransaction } from "../models/transactionModel";
+import { IOrderRepository } from "../repositories/orderRepository";
+import { ITransactionRepository } from "../repositories/transactionRepository";
+import { IStockRepository } from "../repositories/stockrepository";
+import Stock, { IStock } from "../models/stockModel";
+import { IpromotionRepsoitory } from "../repositories/promotionRepository";
+import { IWatchlist } from "../models/watchlistModel";
+import { IWatchlistRepository } from "../repositories/watchlistRepsoitory";
+import mongoose from "mongoose";
+import Razorpay from "razorpay";
+import crypto from "crypto";
+import { UUID } from "crypto";
+import {
+  IPromotion,
+  IReferralBonus,
+  ISignupBonus,
+  ILoyaltyRewards,
+} from "../models/promoModel";
+
+type ObjectId = mongoose.Types.ObjectId;
 
 dotenv.config();
 
@@ -18,28 +36,93 @@ interface OtpStoreEntry {
   otp?: string;
   otpExpiration?: number;
   userId?: string;
+  refferedBy?: string;
+}
+export interface IUserService {
+  signup(
+    name: string,
+    email: string,
+    password: string,
+    referralCode?: string
+  ): Promise<void>;
+  verifyOtp(otp: string): Promise<{ token: string }>;
+  resendOtp(email: string): Promise<string>;
+  login(email: string, password: string): Promise<{ token: string }>;
+  forgotPassword(email: string): Promise<void>;
+  resetPassword(email: string, otp: string, newPassword: string): Promise<void>;
+  home(): Promise<void>;
+  getUserProfile(userId: string | undefined): Promise<IUser | null>;
+  getUserPortfolio(userId: string | undefined): Promise<IUser | null>;
+  getAllStocks(): Promise<IStock[]>;
+  getStockById(userId: string | undefined): Promise<IStock | null>;
+  placeOrder(
+    user: ObjectId | undefined,
+    stock: string,
+    type: string,
+    orderType: string,
+    quantity: number,
+    price: number,
+    stopPrice: number,
+    IsIntraday: Boolean | undefined
+  ): Promise<IOrder | null>;
+  getTransactions(userId: string | undefined): Promise<ITransaction[]>;
+  updatePortfolioAfterSell(
+    userId: string,
+    stockId: string,
+    quantityToSell: number
+  ): Promise<IUser | null>;
+  getMarketPrice(symbol: string): Promise<any>;
+  getWatchlist(userId: string | undefined): Promise<IWatchlist | null>;
+  ensureWatchlistAndAddStock(
+    userId: string | undefined,
+    stocksymbol: string
+  ): Promise<IWatchlist>;
+  getStockData(symbol: string | undefined): Promise<any>;
+  getReferralCode(userId: string | undefined): Promise<string | undefined>;
+  getOrders(userId: string | undefined): Promise<IOrder[] | null>;
+  getUserProfileWithRewards(userId: string | undefined): Promise<IUser | null>;
 }
 
 const otpStore: Map<string, OtpStoreEntry> = new Map();
 
-export class UserService {
-  private userRepository: UserRepository;
-  private orderRepository: OrderRepository;
-
-  constructor() {
-    this.userRepository = new UserRepository();
-    this.orderRepository = new OrderRepository();
+export class UserService implements IUserService {
+  private userRepository: IuserRepsitory;
+  private orderRepository: IOrderRepository;
+  private transactionRepository: ITransactionRepository;
+  private stockRepository: IStockRepository;
+  private promotionRepository: IpromotionRepsoitory;
+  private watchlistRepository: IWatchlistRepository;
+  constructor(
+    stockRepository: IStockRepository,
+    userRepository: IuserRepsitory,
+    transactionRepository: ITransactionRepository,
+    orderRepository: IOrderRepository,
+    promotionRepository: IpromotionRepsoitory,
+    watchlistRepsoitory: IWatchlistRepository
+  ) {
+    this.userRepository = userRepository;
+    this.orderRepository = orderRepository;
+    this.transactionRepository = transactionRepository;
+    this.stockRepository = stockRepository;
+    this.promotionRepository = promotionRepository;
+    this.watchlistRepository = watchlistRepsoitory;
   }
 
   // Sign up a new user
-  async signup(name: string, email: string, password: string): Promise<void> {
+  async signup(
+    name: string,
+    email: string,
+    password: string,
+    referralCode?: string
+  ): Promise<void> {
     const existingUser = await this.userRepository.findByEmail(email);
     if (existingUser) {
       throw new Error("User already exists");
     }
 
     const otp = generateOTP();
-    otpStore.set(otp, { name, email, password, otp });
+    const generatedReferralCode = crypto.randomBytes(4).toString("hex");
+    otpStore.set(otp, { name, email, password, otp, refferedBy: referralCode });
     await sendEmail(email, otp);
   }
 
@@ -49,21 +132,40 @@ export class UserService {
     if (!pendingUser) {
       throw new Error("Invalid OTP");
     }
+    const referredBy = pendingUser.refferedBy;
 
     const newUser = await this.userRepository.save({
       name: pendingUser.name,
       email: pendingUser.email,
       password: pendingUser.password,
+      referralCode: crypto.randomBytes(4).toString("hex"),
+      referredBy,
     });
     otpStore.delete(otp);
-
+    const promotion = await this.promotionRepository.findPromotion();
+    if (promotion && promotion.signupBonus.enabled) {
+      await this.userRepository.addSignupBonus(
+        newUser._id.toString(),
+        promotion._id.toString(),
+        promotion.signupBonus.amount
+      );
+    }
+    if (referredBy) {
+      const referrer = await this.userRepository.findByRefferalCode(referredBy);
+      if (referrer) {
+        await this.userRepository.updateUserBalance(
+          referrer._id.toString(),
+          100
+        ); // Example bonus
+      }
+    }
     const token = jwt.sign({ userId: newUser._id }, process.env.JWT_SECRET!, {
       expiresIn: "1h",
     });
 
     return { token };
   }
-  //Resnd OTP
+  //Resend OTP
   async resendOtp(email: string): Promise<string> {
     const existingUser = await this.userRepository.findByEmail(email);
     if (existingUser) {
@@ -153,32 +255,41 @@ export class UserService {
     await this.userRepository.updatePassword(email, newPassword);
     otpStore.delete(email);
   }
-
+  //Home
   async home(): Promise<void> {}
 
+  //Get User Profle
   async getUserProfile(userId: string | undefined): Promise<IUser | null> {
     const user = await this.userRepository.findById(userId);
+    console.log(user, "from service....");
     if (!user) {
       throw new Error("user not found");
     }
     return user;
   }
 
+  //Get User Portfolio
   async getUserPortfolio(userId: string | undefined): Promise<IUser | null> {
-    const portfolio = await this.userRepository.findById(userId);
-    return portfolio;
+    return await this.userRepository.getUserById(userId);
   }
 
+  //Get All Stocks
+  async getAllStocks() {
+    return this.stockRepository.getAllStocks();
+  }
+
+  //Place an Order
   async placeOrder(
-    user: string,
+    user: ObjectId | undefined,
     stock: string,
-    type: string,
-    orderType: string,
+    type: "BUY" | "SELL",
+    orderType: "MARKET" | "LIMIT" | "STOP",
     quantity: number,
     price: number,
-    stopPrice: number
+    stopPrice: number,
+    isIntraday: Boolean | undefined
   ): Promise<IOrder | null> {
-    const order = await this.orderRepository.createOrder({
+    const orderData: Partial<IOrder> = {
       user,
       stock,
       type,
@@ -186,7 +297,107 @@ export class UserService {
       quantity,
       price,
       stopPrice,
-    });
+      isIntraday,
+    };
+
+    const order = await this.orderRepository.createOrder(orderData);
     return order;
+  }
+
+  //Get Transactions of a user
+  async getTransactions(userId: string | undefined): Promise<ITransaction[]> {
+    console.log("User ID inside service:", userId);
+    const transactions = await this.transactionRepository.getTransactions(
+      userId
+    );
+    console.log("Transactions inside service:", transactions);
+    return transactions;
+  }
+  //Get Stock By ID
+  async getStockById(userId: string | undefined): Promise<IStock | null> {
+    return await this.stockRepository.getStockById(userId);
+  }
+
+  async getWatchlist(userId: string | undefined): Promise<IWatchlist | null> {
+    return await this.watchlistRepository.getByUserId(userId);
+  }
+
+  //Update User Portfolio After Sell
+  async updatePortfolioAfterSell(
+    userId: string,
+    stockId: string,
+    quantityToSell: number
+  ): Promise<IUser | null> {
+    return await this.userRepository.updatePortfolioAfterSell(
+      userId,
+      stockId,
+      quantityToSell
+    );
+  }
+  async getMarketPrice(symbol: string): Promise<any> {
+    return this.stockRepository.getMarketPrice(symbol);
+  }
+  async ensureWatchlistAndAddStock(
+    userId: string | undefined,
+    stocksymbol: string
+  ): Promise<IWatchlist> {
+    console.log("hello from service");
+    return this.watchlistRepository.ensureWatchlistAndAddStock(
+      userId,
+      stocksymbol
+    );
+  }
+  async getStockData(symbol: string | undefined): Promise<any> {
+    const stockData = await this.stockRepository.getStockData(symbol);
+    const formattedData = stockData.map((stock) => ({
+      time: stock.timestamp.getTime() / 1000, // Convert to seconds (Unix timestamp)
+      open: stock.open,
+      high: stock.high,
+      low: stock.low,
+      close: stock.close,
+      volume: stock.volume,
+    }));
+    return formattedData;
+  }
+  async getReferralCode(
+    userId: string | undefined
+  ): Promise<string | undefined> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    return user.referralCode;
+  }
+  async getOrders(userId: string | undefined): Promise<IOrder[] | null> {
+    const orders = await this.orderRepository.findOrders(userId);
+    return orders;
+  }
+  async getUserProfileWithRewards(
+    userId: string | undefined
+  ): Promise<IUser | null> {
+    try {
+      // Fetch the user and their promotions
+      const user = await this.userRepository.getPromotions(userId);
+      if (user) {
+        for (const promotion of user.promotions) {
+          const promo = await this.promotionRepository.findPromotion();
+
+          // Apply loyalty rewards if conditions are met
+          if (promo && promo.loyaltyRewards.enabled) {
+            if (user.balance >= promo.loyaltyRewards.tradingAmount) {
+              user.balance += promo.loyaltyRewards.rewardAmount;
+              console.log(
+                `Loyalty reward applied: ${promo.loyaltyRewards.rewardAmount}`
+              );
+            }
+          }
+        }
+        await user.save();
+      }
+
+      return user;
+    } catch (error) {
+      throw error;
+    }
   }
 }

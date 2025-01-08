@@ -51,7 +51,7 @@ const userSchema = new mongoose_1.Schema({
     password: {
         type: String,
         required: function () {
-            return !this.googleId; // Only require password if no Google ID is provided
+            return !this.googleId;
         },
     },
     createdAt: {
@@ -63,18 +63,23 @@ const userSchema = new mongoose_1.Schema({
         required: true,
         default: false,
     },
+    role: {
+        type: String,
+        enum: ["user", "admin"],
+        default: "user",
+    },
     is_Admin: {
         type: Boolean,
         default: false,
     },
     googleId: {
-        type: String, // Field for Google user ID
+        type: String,
         unique: true,
-        sparse: true, // Allows missing values to be unique
+        sparse: true,
     },
     profilePhoto: {
-        type: String, // Store the URL or path to the image
-        default: "assets/default-profile.png", // Default profile image
+        type: String,
+        default: "assets/default-profile.png",
     },
     portfolio: [
         {
@@ -82,6 +87,20 @@ const userSchema = new mongoose_1.Schema({
             quantity: { type: Number, required: true },
         },
     ],
+    balance: {
+        type: Number,
+        required: true,
+        default: 0,
+    },
+    promotions: [
+        {
+            type: mongoose_1.Schema.Types.ObjectId,
+            ref: "Promotion", // Reference the Promotion model
+        },
+    ],
+    referralCode: { type: String, unique: true },
+    referredBy: { type: String },
+    referralsCount: { type: Number, default: 0 },
 });
 // Pre-save hook to hash the password
 userSchema.pre("save", function (next) {
@@ -98,6 +117,24 @@ userSchema.pre("save", function (next) {
 userSchema.methods.comparePassword = function (password) {
     return __awaiter(this, void 0, void 0, function* () {
         return yield bcryptjs_1.default.compare(password, this.password);
+    });
+};
+// Method to check for loyalty rewards based on promotions
+userSchema.methods.checkLoyaltyRewards = function () {
+    return __awaiter(this, void 0, void 0, function* () {
+        const user = this;
+        for (const promotionId of user.promotions) {
+            const promotion = yield mongoose_1.default
+                .model("Promotion")
+                .findById(promotionId);
+            if (promotion && promotion.loyaltyRewards.enabled) {
+                if (user.balance >= promotion.loyaltyRewards.tradingAmount) {
+                    user.balance += promotion.loyaltyRewards.rewardAmount;
+                    console.log("Loyalty rewards applied:", user.balance);
+                }
+            }
+        }
+        yield user.save();
     });
 };
 // Create and export the model

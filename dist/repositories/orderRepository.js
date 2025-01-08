@@ -20,6 +20,11 @@ class OrderRepository {
             return orderModel_1.default.findById(orderId).populate("user").populate("stock").exec();
         });
     }
+    findOrders(UserId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return orderModel_1.default.find({ user: UserId }).populate("stock", "symbol name").exec();
+        });
+    }
     findCompletedOrders() {
         return __awaiter(this, void 0, void 0, function* () {
             return orderModel_1.default.find({ status: "COMPLETED" })
@@ -30,12 +35,27 @@ class OrderRepository {
     }
     findOrdersByType(query) {
         return __awaiter(this, void 0, void 0, function* () {
-            return orderModel_1.default.find(query).exec();
+            return orderModel_1.default.find(query).populate("user").populate("stock").exec();
         });
     }
     createOrder(orderData) {
         return __awaiter(this, void 0, void 0, function* () {
             return orderModel_1.default.create(orderData);
+        });
+    }
+    getAllOrders() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return orderModel_1.default.find()
+                .sort({ createdAt: -1 })
+                .populate("user")
+                .populate("stock")
+                .exec();
+        });
+    }
+    cancelOrder(orderId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const updatedOrder = yield orderModel_1.default.findByIdAndUpdate(orderId, { status: "FAILED" }, { new: true }).exec();
+            return updatedOrder;
         });
     }
 }
